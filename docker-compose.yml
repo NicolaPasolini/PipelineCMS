@@ -1,0 +1,59 @@
+services:
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.9.4
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+    networks:
+      - tesi-net
+
+  ingestion:
+    build: ./services/ingestion
+    container_name: ingestion
+    restart: unless-stopped
+    ports:
+      - "8001:80"
+    volumes:
+      - ./data:/app/data
+    networks:
+      - tesi-net
+
+  preprocessing:
+    build: ./services/preprocessing
+    container_name: preprocessing
+    restart: unless-stopped
+    ports:
+      - "8002:80"
+    networks:
+      - tesi-net
+
+  feature_selection:
+    build: ./services/feature_selection
+    container_name: feature_selection
+    restart: unless-stopped
+    ports:
+      - "8003:80"
+    networks:
+      - tesi-net
+
+  prediction:
+    build: ./services/prediction
+    container_name: prediction
+    restart: unless-stopped
+    ports:
+      - "8004:80"
+    networks:
+      - tesi-net
+
+networks:
+  tesi-net:
+    driver: bridge
