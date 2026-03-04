@@ -1,105 +1,68 @@
 services:
 
-  # ── MS1 ─────────────────────────────────────────────────────────
   ingestion:
     build: ./services/ingestion
-    container_name: ingestion-service
+    container_name: ingestion
     ports:
       - "8001:8001"
     volumes:
       - ./data:/app/data:ro
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
     networks:
-      - thesis-net
+      - pipeline
 
-  # ── MS2 ─────────────────────────────────────────────────────────
   preprocessing:
     build: ./services/preprocessing
-    container_name: preprocessing-service
+    container_name: preprocessing
     ports:
       - "8002:8002"
-    command: uvicorn main:app --host 0.0.0.0 --port 8002 --reload
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
     networks:
-      - thesis-net
+      - pipeline
 
-  # ── MS3 ──────────────────────────────────────────────────────────
-  feature-selection:
+  feature_selection:
     build: ./services/feature_selection
-    container_name: feature-selection-service
+    container_name: feature_selection
     ports:
       - "8003:8003"
-    command: uvicorn main:app --host 0.0.0.0 --port 8003 --reload
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
     networks:
-      - thesis-net
+      - pipeline
 
-  # ── MS4 ──────────────────────────────────────────────────────────
-  prediction:
-    build: ./services/prediction
-    container_name: prediction-service
+  training:
+    build: ./services/training
+    container_name: training
     ports:
       - "8004:8004"
-    command: uvicorn main:app --host 0.0.0.0 --port 8004 --reload
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
     networks:
-      - thesis-net
+      - pipeline
 
-  # ── MS5 ──────────────────────────────────────────────────────────
-  compensation:
-    build: ./services/compensation
-    container_name: compensation-service
+  prediction:
+    build: ./services/prediction
+    container_name: prediction
     ports:
       - "8005:8005"
-    command: uvicorn main:app --host 0.0.0.0 --port 8005 --reload
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
     networks:
-      - thesis-net
+      - pipeline
 
-  # ── N8N ──────────────────────────────────────────────────────────
   n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
+    image: n8nio/n8n:latest
     container_name: n8n
     ports:
       - "5678:5678"
-    environment:
-      - N8N_HOST=localhost
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      - GENERIC_TIMEZONE=Europe/Rome
-      - TZ=Europe/Rome
     volumes:
       - ./n8n_data:/home/node/.n8n
-    restart: unless-stopped
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
     networks:
-      - thesis-net
+      - pipeline
+    depends_on:
+      - ingestion
+      - preprocessing
+      - feature_selection
+      - training
+      - prediction
 
 networks:
-  thesis-net:
+  pipeline:
     driver: bridge
