@@ -5,8 +5,6 @@ services:
     container_name: ingestion
     ports:
       - "8001:8001"
-    volumes:
-      - ./data:/app/data:ro
     networks:
       - pipeline
 
@@ -34,34 +32,13 @@ services:
     networks:
       - pipeline
 
-  prediction:
-    build: ./services/prediction
-    container_name: prediction
+  evaluation:
+    build: ./services/evaluation
+    container_name: evaluation
     ports:
       - "8005:8005"
     networks:
       - pipeline
-
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: n8n
-    ports:
-      - "5678:5678"
-    volumes:
-      - ./n8n_data:/home/node/.n8n
-    environment:
-      - N8N_BASIC_AUTH_ACTIVE=false
-      - N8N_HOST=0.0.0.0
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-    networks:
-      - pipeline
-    depends_on:
-      - ingestion
-      - preprocessing
-      - feature_selection
-      - training
-      - prediction
 
 networks:
   pipeline:
