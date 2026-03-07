@@ -1,42 +1,112 @@
 services:
 
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Europe/Rome
+      - TZ=Europe/Rome
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+    networks:
+      - pipeline
+
   ingestion:
     build: ./services/ingestion
     container_name: ingestion
+    restart: unless-stopped
     ports:
       - "8001:8001"
+    volumes:
+      - ./data:/app/data:ro
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - pipeline
 
   preprocessing:
     build: ./services/preprocessing
     container_name: preprocessing
+    restart: unless-stopped
     ports:
       - "8002:8002"
+    command: uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - pipeline
 
   feature_selection:
-    build: ./services/feature_selection
-    container_name: feature_selection
+    build: ./services/feature-selection
+    container_name: feature-selection
+    restart: unless-stopped
     ports:
       - "8003:8003"
+    command: uvicorn main:app --host 0.0.0.0 --port 8003 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - pipeline
 
   training:
     build: ./services/training
     container_name: training
+    restart: unless-stopped
     ports:
       - "8004:8004"
+    command: uvicorn main:app --host 0.0.0.0 --port 8004 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - pipeline
 
   evaluation:
     build: ./services/evaluation
     container_name: evaluation
+    restart: unless-stopped
     ports:
       - "8005:8005"
+    command: uvicorn main:app --host 0.0.0.0 --port 8005 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - pipeline
+
+  compensation:
+    build: ./services/compensation
+    container_name: compensation
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    command: uvicorn main:app --host 0.0.0.0 --port 8006 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - pipeline
 

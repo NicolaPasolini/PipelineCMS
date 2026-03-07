@@ -2,76 +2,73 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import pandas as pd
 import numpy as np
-from scipy.cluster.hierarchy import linkage, fcluster
 from typing import Dict, List, Any
 
-app = FastAPI(title="Feature Selection Service")
+app = FastAPI(title="Compensation Service")
 
 
-class FeatureSelectionParams(BaseModel):
-    df_tall:      Dict[str, List[Any]]
-    d_target:     Dict[str, List[Any]]
-    target_col:   str = "D3"
-    num_clusters: int = 6
+class CompensationParams(BaseModel):
+    # da /evaluate
+    suggested_model: str                  # "LASSO" o "MLRA"
+    # da /training
+    lasso: Dict[str, Any]                 # avg_coef, avg_intercept, features, ...
+    mlra: Dict[str, Any]                  # avg_coef, avg_intercept, features, ...
+    # da /select_features
+    df_clustered: Dict[str, List[Any]]    # TIME + 6 feature (per MLRA)
+    df_tall: Dict[str, List[Any]]         # TIME + T1-T28   (per LASSO)
 
 
-@app.post("/select_features")
-def select_features(params: FeatureSelectionParams):
+@app.post("/compensate")
+def compensate(params: CompensationParams):
     try:
-        # ── Ricostruisci DataFrame ────────────────────────────────────────
-        df_tall  = pd.DataFrame(params.df_tall)
-        d_target = pd.DataFrame(params.d_target)
+        if params.suggested_model == "LASSO":
+            df = pd.DataFrame(params.df_tall)
+            features = params.lasso.get("features", [])
+            avg_coef = np.array(params.lasso.get("avg_coef", []))
+            intercept = float(params.lasso.get("avg_intercept", 0.0))
 
-        # ── Isola solo le colonne temperature (T1..T28, escludi TIME) ────
-        temp_cols = [c for c in df_tall.columns if c != "TIME"]
-        df_temps  = df_tall[temp_cols]
+        elif params.suggested_model == "MLRA":
+            df = pd.DataFrame(params.df_clustered)
+            features = params.mlra.get("features", [])
+            avg_coef = np.array(params.mlra.get("avg_coef", []))
+            intercept = float(params.mlra.get("avg_intercept", 0.0))
 
-        # ── HIERARCHICAL CLUSTERING su matrice di correlazione ────────────
-        # Stessa logica del notebook: distanza = 1 - |correlazione|
-        corr_matrix  = df_temps.corr().abs()
-        distance_mat = 1 - corr_matrix
+        else:
+            raise HTTPException(status_code=400, detail=f"Modello non supportato: {params.suggested_model}")
 
-        # Linkage su upper triangle della matrice di distanza
-        condensed = distance_mat.values[
-            np.triu_indices(len(temp_cols), k=1)
-        ]
-        Z = linkage(condensed, method="average")
+        missing = [f for f in features if f not in df.columns]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Feature mancanti nel df: {missing}")
 
-        # Assegna cluster
-        cluster_labels = fcluster(Z, t=params.num_clusters, criterion="maxclust")
+        X = df[features].values
+        d_estimated = X @ avg_coef + intercept
+        compensation_offsets = -d_estimated
 
-        # ── Seleziona feature rappresentativa per ogni cluster ────────────
-        # Criterio: feature con correlazione media più alta col resto del cluster
-        selected_features = []
-        for cluster_id in range(1, params.num_clusters + 1):
-            cluster_mask  = cluster_labels == cluster_id
-            cluster_feats = [f for f, m in zip(temp_cols, cluster_mask) if m]
-
-            if len(cluster_feats) == 1:
-                selected_features.append(cluster_feats[0])
-            else:
-                # Seleziona quella con correlazione media più alta nel cluster
-                sub_corr = corr_matrix.loc[cluster_feats, cluster_feats]
-                mean_corr = sub_corr.mean()
-                best_feat = mean_corr.idxmax()
-                selected_features.append(best_feat)
-
-        # ── Costruisci df clustered (TIME + feature selezionate) ──────────
-        df_clustered = df_tall[["TIME"] + selected_features].copy()
-
-        return {
-            "df_clustered":       df_clustered.to_dict(orient="list"),
-            "d_target":           d_target.to_dict(orient="list"),
-            "target_col":         params.target_col,
-            "selected_features":  selected_features,
-            "cluster_labels":     cluster_labels.tolist(),
-            "all_features":       temp_cols,
+        result = {
+            "model_used": params.suggested_model,
+            "features_used": features,
+            "n_samples": len(d_estimated),
+            "displacement_predicted_um": d_estimated.tolist(),
+            "compensation_offset_um": compensation_offsets.tolist(),
+            "summary": {
+                "mean_displacement_um": round(float(np.mean(d_estimated)), 6),
+                "max_displacement_um": round(float(np.max(np.abs(d_estimated))), 6),
+                "mean_compensation_um": round(float(np.mean(compensation_offsets)), 6),
+                "std_compensation_um": round(float(np.std(compensation_offsets)), 6),
+            }
         }
 
+        if "TIME" in df.columns:
+            result["timestamps"] = df["TIME"].tolist()
+
+        return result
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "compensation"}

@@ -16,7 +16,7 @@ class FeatureSelectionParams(BaseModel):
     df_dis:       Dict[str, List[Any]]
     num_clusters: int = 6
 
-@app.post("/select-features")
+@app.post("/feature-selection")
 def select_features(params: FeatureSelectionParams):
     try:
         dfT_ALL      = pd.DataFrame(params.df_tall)
