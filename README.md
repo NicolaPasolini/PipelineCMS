@@ -1,12 +1,12 @@
 # Thermal Compensation Pipeline — n8n Orchestration
 
-Pipeline di orchestrazione per la stima e compensazione della deformazione termica di un centro di lavoro CNC a 5 assi (CMS VM-30K). Trasforma una pipeline Python monolitica in un'architettura a microservizi orchestrata tramite [n8n](https://n8n.io), con integrazione di task Human-in-the-Loop (HITL).
+Pipeline di orchestrazione per la stima e compensazione della deformazione termica di un centro di lavoro CNC a 5 assi (CMS VM-30K). Trasforma una pipeline Python monolitica in un'architettura a microservizi orchestrata tramite [n8n](https://n8n.io), con integrazione di task Human-in-the-Loop (HITL) e supporto cognitivo LLM (Gemini 2.5 Flash).
 
 ---
 
 ## Architettura
 
-```
+```text
 [Trigger]
     │
     ▼
@@ -23,7 +23,7 @@ Pipeline di orchestrazione per la stima e compensazione della deformazione termi
     │
     ├── nessun_problema ─────────────────────────────────────────┐
     │                                                             │
-    ├── sensore_guasto → [sensor removal] → [Feature Selection 2 :8003]
+    ├── sensore_guasto → [sensor removal] → [Feature Selection 2] │
     │                                                             │
     └── macchina_anomala → [STOP + log]                [Body5] → [Training :8004]
                                                                   │
@@ -31,7 +31,14 @@ Pipeline di orchestrazione per la stima e compensazione della deformazione termi
                                                           [Evaluation :8005]
                                                                   │
                                                                   ▼
-                                                         [Compensation :8006]
+                                                      [LLM Gemini 2.5 Flash] ← Generazione Report
+                                                                  │
+                                                                  ▼
+                                                          [HITL 2 — Form] ← Operatore approva/rifiuta offset
+                                                                  │
+                                                                  ├── Rifiuta → [STOP]
+                                                                  │
+                                                                  └── Approva → [Compensation :8006]
 ```
 
 ---
@@ -45,7 +52,7 @@ Pipeline di orchestrazione per la stima e compensazione della deformazione termi
 | `feature-selection` | 8003 | `POST /feature-selection` | Clustering gerarchico ward+euclidean su T trasposta, ritorna cluster_map e df_clustered |
 | `training` | 8004 | `POST /train` | Allena MLRA (su df_clustered) e LASSO con GridSearch (su df_tall), KFold CV |
 | `evaluation` | 8005 | `POST /evaluate` | Calcola MAE, MSE, RMSE, R², riduzione % vs baseline, genera plot comparativo |
-| `compensation` | 8006 | `POST /compensate` | Applica il modello suggerito per calcolare gli offset di compensazione in µm |
+| `compensation` | 8006 | `POST /compensate` | Applica il modello validato per calcolare gli offset di compensazione in µm |
 
 Tutti i servizi espongono anche `GET /health`.  
 Rete Docker interna: `pipeline` (bridge).
@@ -220,7 +227,7 @@ Suggerisce automaticamente il modello con RMSE minore.
 
 ### `POST /compensate`
 
-Applica il modello suggerito per calcolare gli offset di compensazione termica in µm.  
+Applica il modello suggerito e approvato per calcolare gli offset di compensazione termica in µm.  
 `compensation_offset = -displacement_predicted`
 
 **Request body:**
@@ -305,45 +312,59 @@ Produce un nuovo `cluster_map` ottimizzato senza il sensore rimosso.
 > ⚠️ **Importante**: rimuovere il sensore rappresentante di un cluster elimina tutta la copertura termica di quel gruppo. Il modello risultante non potrà usare quel sensore neanche in inferenza. Usare solo in caso di guasto definitivo.
 
 ### Branch C — Macchina anomala
-→ `STOP` (da implementare: logging alert + notifica operatore)
+→ `STOP` (logging alert e notifica operatore)
 
 ---
 
-## Body5 — Preparazione payload Training
+## HITL 2 & Supporto Cognitivo LLM
 
-Legge dal Feature Selection corretto in base al branch percorso:
+### Scopo
+Abbattere la barriera cognitiva tra i risultati matematici del backend (RMSE, R²) e l'operatore di macchina, delegando la responsabilità della decisione finale a un attore umano qualificato.
 
-```javascript
-const curr = $input.first().json;
-const isModified = !!curr.sensore_escluso;
+### Flusso Operativo
+1. **Filtro Payload**: Un nodo Code rimuove la stringa Base64 del grafico generata dall'`Evaluation` per non saturare la context window dell'LLM:
+   ```javascript
+   const evalData = $input.all()[0].json;
+   delete evalData.comparison_plot;
+   return { json: evalData };
+   ```
+2. **Generazione Report (Gemini 2.5 Flash)**: Il modello riceve le metriche e formula un report diagnostico in italiano (indicando modello migliore, % riduzione errore e RMSE residuo).
+3. **Form Operatore (Wait node)**: Il workflow si sospende.
 
-const fs = isModified
-  ? $("code fs2").item.json           // Feature Selection ri-eseguita
-  : $("Feature Selection").item.json; // Feature Selection originale
+### Form (Wait node — On Form Submission)
 
-return [{ json: {
-  df_clustered: fs.df_clustered,
-  df_tall:      fs.df_tall,
-  df_dis:       fs.df_dis,
-  displ:        3,
-  k_folds:      10,
-  random_state: 42
-}}];
-```
+| Campo | Tipo | Valori / Descrizione |
+|---|---|---|
+| `Report Diagnostico` | HTML/Text | Sola lettura (Testo generato dall'LLM) |
+| `Decisione Operativa` | Dropdown | `approva_compensazione` / `rifiuta_ricalcola` |
+
+### Branch A — Approva
+Il workflow recupera il JSON originale dall'Evaluation e lo invia al servizio `Compensation`.
+→ `Compensation`
+
+### Branch B — Rifiuta
+→ `STOP` (workflow interrotto, macchina protetta da compensazioni errate)
 
 ---
 
 ## Pattern chiave — Wait node e dati pesanti
 
-In n8n, il **Wait node** (On Form Submission) non propaga il payload dell'esecuzione originale quando il workflow riprende. Con payload grandi (dataframe JSON con migliaia di righe) il problema è sistematico.
+In n8n, il **Wait node** (On Form Submission) non propaga il payload dell'esecuzione originale quando il workflow riprende. Con payload grandi (dataframe JSON con migliaia di righe) la perdita del dato è sistematica.
 
-**Regola**: ogni nodo dopo un Wait che necessita di dataframe deve leggerli esplicitamente per nome:
+**Regola**: ogni nodo dopo un Wait che necessita di dataframe deve leggerli esplicitamente richiamando il nodo precedente:
 
 ```javascript
-// ✅ Corretto
-const dati = $("Feature Selection").item.json;
+// ✅ CORRETTO (Recupero diretto dal nodo target)
 
-// ❌ Errato — $input dopo il Wait non ha i dataframe
+// Esempio per il nodo Training (dopo HITL 1):
+const dati_training = $("Feature Selection").item.json;
+
+// Esempio per il nodo Compensation (dopo HITL 2):
+const eval_data = $("Evaluation").item.json;
+const original_data = $("Feature Selection").item.json;
+
+
+// ❌ ERRATO ($input dopo il Wait ha solo i dati del Form)
 const dati = $input.first().json;
 ```
 
@@ -351,28 +372,20 @@ const dati = $input.first().json;
 
 ## Struttura repository
 
-```
+```text
 /
 ├── docker-compose.yml
+├── n8n_workflow_export.json
 ├── services/
-│   ├── ingestion/        main.py
-│   ├── preprocessing/    main.py
-│   ├── feature-selection/main.py
-│   ├── training/         main.py
-│   ├── evaluation/       main.py
-│   └── compensation/     main.py
+│   ├── ingestion/        (main.py, requirements.txt, Dockerfile)
+│   ├── preprocessing/    (main.py, requirements.txt, Dockerfile)
+│   ├── feature-selection/(main.py, requirements.txt, Dockerfile)
+│   ├── training/         (main.py, requirements.txt, Dockerfile)
+│   ├── evaluation/       (main.py, requirements.txt, Dockerfile)
+│   └── compensation/     (main.py, requirements.txt, Dockerfile)
 └── data/
     ├── TE1.csv – TE4.csv
     ├── TI.csv
     └── Displacements.csv
 ```
 
----
-
-## Todo
-
-- [ ] Branch C: implementare stop + log alert macchina anomala
-- [ ] HITL 2: validazione risultati training da parte dell'operatore
-- [ ] Integrazione LLM per report esplicativo del modello
-- [ ] Aggiungere endpoint `/evaluate` al workflow n8n dopo Training
-- [ ] Aggiungere endpoint `/compensate` come step finale
