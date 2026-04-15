@@ -1,0 +1,896 @@
+{
+  "name": "Tesi - HITL",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        16
+      ],
+      "id": "35a1834a-79d1-4dc3-a6c4-843000eb9d17",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ingestion:8001/ingest",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 6000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        128,
+        16
+      ],
+      "id": "e8c6b6a0-096f-493d-9215-04436ae0136d",
+      "name": "Ingestion"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://preprocessing:8002/preprocess",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        448,
+        16
+      ],
+      "id": "fd4a2bb0-8d0d-40ae-b0de-ad79aeeb72a3",
+      "name": "Preprocessing"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://feature-selection:8003/feature-selection",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        784,
+        16
+      ],
+      "id": "3f519d70-fd6a-418a-96e5-417c9599bb92",
+      "name": "Feature Selection"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://training:8004/train",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1712,
+        80
+      ],
+      "id": "409db3ac-e9a2-401c-a124-fde3d763da0c",
+      "name": "Training"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2448,
+        64
+      ],
+      "id": "f3e0b544-0887-410a-98f1-f3d190c5c786",
+      "name": "Merge",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evaluation:8005/evaluate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2096,
+        352
+      ],
+      "id": "eec1c041-90df-47df-bd02-a72ec2b5d964",
+      "name": "Evaluation"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://compensation:8006/compensate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2816,
+        80
+      ],
+      "id": "4096d73d-e3ff-4336-8e0e-0c76c428eba0",
+      "name": "Compensation"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"config\": {\n    \"normalize_time\": false,\n    \"displ\": 3,\n    \"num_clusters\": 6,\n    \"selection_method\": \"CLUST\",\n    \"k_folds\": 10,\n    \"random_state\": 42\n  },\n  \"preprocessing\": {\n    \"rows\": 2619,\n    \"cols_tall\": 29,\n    \"cols_dis\": 6,\n    \"T1_first\": 0.0,\n    \"D3_first\": 0.0,\n    \"D3_min\": -52.7191,\n    \"D3_max\": 30.2809,\n    \"columns_tall\": [\n      \"TIME\",\n      \"T1\",\n      \"T2\",\n      \"T3\",\n      \"T4\",\n      \"T5\",\n      \"T6\",\n      \"T7\",\n      \"T8\",\n      \"T9\",\n      \"T10\",\n      \"T11\",\n      \"T12\",\n      \"T13\",\n      \"T14\",\n      \"T15\",\n      \"T16\",\n      \"T17\",\n      \"T18\",\n      \"T19\",\n      \"T20\",\n      \"T21\",\n      \"T22\",\n      \"T23\",\n      \"T24\",\n      \"T25\",\n      \"T26\",\n      \"T27\",\n      \"T28\"\n    ],\n    \"columns_dis\": [\n      \"TIME\",\n      \"D1\",\n      \"D2\",\n      \"D3\",\n      \"D4\",\n      \"D5\"\n    ]\n  },\n  \"feature_selection\": {\n    \"selected_features\": [\n      \"T17\",\n      \"T4\",\n      \"T2\",\n      \"T6\",\n      \"T1\",\n      \"T26\"\n    ]\n  },\n  \"training\": {\n    \"target_col\": \"D3\",\n    \"target_index\": 3,\n    \"mlra\": {\n      \"avg_intercept\": -2.388119256129582,\n      \"avg_coef\": [\n        7.97890576997028,\n        -20.33845123736129,\n        4.746451559227545,\n        -3.1797390653751294,\n        -22.427734956858366,\n        -0.026568623221309463\n      ],\n      \"rmse\": 1.0636246887647742,\n      \"pearson_r\": 0.9984900851188854,\n      \"features\": [\n        \"T17\",\n        \"T4\",\n        \"T2\",\n        \"T6\",\n        \"T1\",\n        \"T26\"\n      ]\n    },\n    \"lasso\": {\n      \"best_alpha\": 0.07880462815669913,\n      \"avg_intercept\": 3.818628681957372,\n      \"avg_coef\": [\n        -12.681365749814926,\n        0.0,\n        0.0,\n        -0.5846700390915479,\n        0.0,\n        0.0,\n        -3.0405499767276614,\n        0.0,\n        -3.195163580354902,\n        -2.4493438709812563,\n        0.0,\n        0.0,\n        -4.580335865207334,\n        0.0,\n        0.0,\n        0.0,\n        2.463393848020383,\n        0.04443679424878479,\n        0.12664460867849994,\n        0.0,\n        0.0,\n        0.0,\n        0.0,\n        0.0,\n        0.0,\n        -0.006075265984001857,\n        0.0,\n        6.111546172910386\n      ],\n      \"rmse\": 0.762407510598323,\n      \"pearson_r\": 0.9996057591596393,\n      \"nonzero_coef\": 2,\n      \"features\": [\n        \"T1\",\n        \"T2\",\n        \"T3\",\n        \"T4\",\n        \"T5\",\n        \"T6\",\n        \"T7\",\n        \"T8\",\n        \"T9\",\n        \"T10\",\n        \"T11\",\n        \"T12\",\n        \"T13\",\n        \"T14\",\n        \"T15\",\n        \"T16\",\n        \"T17\",\n        \"T18\",\n        \"T19\",\n        \"T20\",\n        \"T21\",\n        \"T22\",\n        \"T23\",\n        \"T24\",\n        \"T25\",\n        \"T26\",\n        \"T27\",\n        \"T28\"\n      ]\n    }\n  },\n  \"evaluation\": {\n    \"suggested_model\": \"LASSO\"\n  }\n}",
+        "options": {
+          "dotNotation": true
+        }
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3024,
+        80
+      ],
+      "id": "d3cd69b8-bb23-49e6-8093-3013fb2a7779",
+      "name": "Reference Notebook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('Preprocessing').first().json;\nconst fs = $('Feature Selection').first().json;\nconst train = $('Training').first().json;\nconst evaln = $('Evaluation').first().json;\nconst refNode = $('Reference Notebook').first().json;\n\nlet ref;\n\nif (refNode.reference && typeof refNode.reference === 'object') {\n  ref = refNode.reference;\n} else if (refNode.reference && typeof refNode.reference === 'string') {\n  ref = JSON.parse(refNode.reference);\n} else {\n  ref = refNode;\n}\n\nfunction diff(a, b) {\n  if (a === undefined || b === undefined || a === null || b === null) return null;\n  return Math.abs(Number(a) - Number(b));\n}\n\nfunction approxEqual(a, b, tol = 1e-6) {\n  const d = diff(a, b);\n  return d !== null && d <= tol;\n}\n\nfunction sameArray(a, b) {\n  return JSON.stringify(a) === JSON.stringify(b);\n}\n\nfunction arrayApproxEqual(a, b, tol = 1e-6) {\n  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;\n  for (let i = 0; i < a.length; i++) {\n    if (Math.abs(Number(a[i]) - Number(b[i])) > tol) return false;\n  }\n  return true;\n}\n\nconst checks = {\n  preprocessing_rows: prep.info.rows === ref.preprocessing.rows,\n  preprocessing_cols_tall: prep.info.cols_tall === ref.preprocessing.cols_tall,\n  preprocessing_cols_dis: prep.info.cols_dis === ref.preprocessing.cols_dis,\n  preprocessing_T1_first: approxEqual(prep.info.T1_first, ref.preprocessing.T1_first, 1e-6),\n  preprocessing_D3_first: approxEqual(prep.info.D3_first, ref.preprocessing.D3_first, 1e-6),\n  preprocessing_D3_min: approxEqual(prep.info.D3_min, ref.preprocessing.D3_min, 1e-4),\n  preprocessing_D3_max: approxEqual(prep.info.D3_max, ref.preprocessing.D3_max, 1e-4),\n  preprocessing_columns_tall: sameArray(prep.info.columns_tall, ref.preprocessing.columns_tall),\n  preprocessing_columns_dis: sameArray(prep.info.columns_dis, ref.preprocessing.columns_dis),\n\n  feature_selection_selected: sameArray(fs.selected_features, ref.feature_selection.selected_features),\n\n  training_target_col: train.target.col_name === ref.training.target_col,\n  training_target_index: train.target.col_index === ref.training.target_index,\n\n  mlra_intercept: approxEqual(train.mlra.avg_intercept, ref.training.mlra.avg_intercept, 1e-6),\n  mlra_rmse: approxEqual(train.mlra.rmse, ref.training.mlra.rmse, 1e-6),\n  mlra_pearson: approxEqual(train.mlra.pearson_r, ref.training.mlra.pearson_r, 1e-6),\n  mlra_coef: arrayApproxEqual(train.mlra.avg_coef, ref.training.mlra.avg_coef, 1e-6),\n  mlra_features: sameArray(train.mlra.features, ref.training.mlra.features),\n\n  lasso_alpha: approxEqual(train.lasso.best_alpha, ref.training.lasso.best_alpha, 1e-6),\n  lasso_intercept: approxEqual(train.lasso.avg_intercept, ref.training.lasso.avg_intercept, 1e-6),\n  lasso_rmse: approxEqual(train.lasso.rmse, ref.training.lasso.rmse, 1e-6),\n  lasso_pearson: approxEqual(train.lasso.pearson_r, ref.training.lasso.pearson_r, 1e-6),\n  lasso_coef: arrayApproxEqual(train.lasso.avg_coef, ref.training.lasso.avg_coef, 1e-6),\n  lasso_features: sameArray(train.lasso.features, ref.training.lasso.features),\n\n  evaluation_model: evaln.suggested_model === ref.evaluation.suggested_model,\n};\n\nconst failed_checks = Object.entries(checks)\n  .filter(([_, passed]) => !passed)\n  .map(([name]) => name);\n\nreturn [{\n  json: {\n    esito: failed_checks.length === 0 ? 'VALIDO' : 'NON VALIDO',\n    failed_checks\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        80
+      ],
+      "id": "0e467800-f3a3-4354-8690-f28b4cb59168",
+      "name": "Notebook Check"
+    },
+    {
+      "parameters": {
+        "jsCode": "const evaluation    = $('Evaluation').first().json;\nconst training      = $('Training').first().json;\nconst featureSelect = $('Feature Selection').first().json;\n\nreturn [{\n  json: {\n    suggested_model: evaluation.suggested_model,\n    lasso:           training.lasso,\n    mlra:            training.mlra,\n    df_clustered:    featureSelect.df_clustered,\n    df_tall:         featureSelect.df_tall\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2608,
+        80
+      ],
+      "id": "fb21f34f-d354-41e2-87d9-317df933d467",
+      "name": "Body"
+    },
+    {
+      "parameters": {
+        "jsCode": "const training = $('Training').item.json;\n\nreturn [{\n  json: {\n    mlra:   training.mlra,\n    lasso:  training.lasso,\n    target: training.target\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1904,
+        352
+      ],
+      "id": "781741b6-02c6-43ec-9b03-82f492969911",
+      "name": "Body1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    normalize_time: false\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        16
+      ],
+      "id": "a95b9565-fda1-49e7-b6d2-e6226833b323",
+      "name": "Body2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ingestion = $('Ingestion').item.json;\n\nreturn [{\n  json: {\n    df_text: ingestion.df_text,\n    df_tint: ingestion.df_tint,\n    df_dis:  ingestion.df_dis\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        16
+      ],
+      "id": "03a08230-5c38-4768-aba2-070e0b0b6d13",
+      "name": "Body3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('Preprocessing').item.json;\n\nreturn [{\n  json: {\n    df_tall:      prep.df_tall,\n    df_dis:       prep.df_dis,\n    num_clusters: 6\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        16
+      ],
+      "id": "1e9c9be6-b32b-4bec-8550-8be333c2d90d",
+      "name": "Body4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const curr = $input.first().json;\n\n// Se sensor removal ha settato questo flag, siamo nel branch B\nconst isModified = !!curr['sensore_escluso'];\n\nconst fs = isModified\n  ? $('code fs2').item.json        // ← Feature Selection ri-eseguita senza il sensore\n  : $('Feature Selection').item.json;  // ← Feature Selection originale\n\nreturn [{\n  json: {\n    df_clustered: fs.df_clustered,\n    df_tall:      fs.df_tall,\n    df_dis:       fs.df_dis,\n    displ:        3,\n    k_folds:      10,\n    random_state: 42\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        80
+      ],
+      "id": "1985953c-c4b5-4248-9d14-5a62cdc9bf0e",
+      "name": "Body5"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nconst features = input.selected_features;\nconst clusterMap = input.cluster_map;\n\nconst featureListText = features.join(\", \");\n\n// Solo per uso interno/debug — non va nel form\nconst clusterSummary = Object.values(clusterMap)\n  .map(c => {\n    const count = c.members.length;\n    const label = count === 1 ? \"sensore\" : \"sensori\";\n    return `${c.representative} (rappresenta ${count} ${label}: ${c.members.join(\", \")})`;\n  })\n  .join(\"\\n\");\n\n// Testo che vede l'operatore — semplice e diretto\nconst formDescription =\n  `Il sistema userà questi ${features.length} sensori per il modello:\\n\\n` +\n  `📍 ${featureListText}\\n\\n` +\n  `Se sai che uno di questi è guasto o fuori servizio, indicalo qui sotto.\\n` +\n  `Altrimenti, seleziona \"Nessun problema\" per procedere.`;\n\nreturn [{\n  json: {\n    df_clustered:     input.df_clustered,\n    df_dis:           input.df_dis,\n    df_tall:          input.df_tall,\n    selected_features: input.selected_features,\n    cluster_map:      input.cluster_map,\n    hitl1: {\n      featureListText,\n      clusterSummary,   // disponibile per debug, non mostrato nel form\n      formDescription,\n      numFeatures: features.length\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        16
+      ],
+      "id": "aac7e5d2-3417-434b-9dd2-591e7ae00d87",
+      "name": "HITL 1"
+    },
+    {
+      "parameters": {
+        "resume": "form",
+        "formTitle": "=Verifica stato macchina",
+        "formDescription": "={{ $json.hitl1.formDescription }}",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Stato della macchina",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Nessun problema - procedi"
+                  },
+                  {
+                    "option": "C'è un sensore guasto"
+                  },
+                  {
+                    "option": "Macchina in stato anomalo - ferma tutto"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Sensore da escludere",
+              "placeholder": "Es: T1"
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1152,
+        16
+      ],
+      "id": "2fdd5f82-16f2-4074-9a85-380d7b96317e",
+      "name": "Wait",
+      "webhookId": "1297c817-71cb-4ec5-9ede-57d361d90885"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json['Stato della macchina'] }}",
+                    "rightValue": "Nessun problema - procedi",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "df6cf692-d35b-4d23-b490-92efbb6d9bc3"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "4299c1f4-7387-45cb-8853-1389d9a1b0ca",
+                    "leftValue": "={{ $json['Stato della macchina'] }}",
+                    "rightValue": "C'è un sensore guasto",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "08ff8fa9-4cbb-4a15-ac1a-f75cd0d88ab0",
+                    "leftValue": "={{ $json['Stato della macchina'] }}",
+                    "rightValue": "Macchina in stato anomalo - ferma tutto",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1328,
+        0
+      ],
+      "id": "b3f3d8c1-b983-441a-9056-5b215ac2d91b",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = $('Feature Selection').item.json;\nconst formData = $input.first().json;\n\nconst daEscludere = (formData['Sensore da escludere'] || '').trim().toUpperCase();\n\n// Rimuove il sensore da df_tall\nconst dfTall = { ...fs.df_tall };\nif (daEscludere) delete dfTall[daEscludere];\n\n// num_clusters ridotto di 1 perché un gruppo termico sparisce\nconst numClusters = Math.max(2, fs.cluster_map ? Object.keys(fs.cluster_map).length - 1 : 5);\n\nreturn [{\n  json: {\n    df_tall:      dfTall,\n    df_dis:       fs.df_dis,\n    num_clusters: numClusters,\n    sensore_escluso: daEscludere\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        288
+      ],
+      "id": "050e523c-3920-40e4-be6a-333d310eb8b3",
+      "name": "sensor removal"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nreturn [{\n  json: {\n    df_tall:      input.df_tall,\n    df_dis:       input.df_dis,\n    num_clusters: input.num_clusters\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        224
+      ],
+      "id": "4f810b8c-8965-4097-a298-fcbcb3209c0b",
+      "name": "code fs2"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "Sei un assistente diagnostico per centri di lavoro CNC a 5 assi. Il tuo compito è tradurre le metriche statistiche di due modelli predittivi in un report breve, professionale e oggettivo per l'operatore di macchina. Non inventare dati fisici, non dare consigli di manutenzione e limitati ad analizzare esclusivamente i dati forniti nel JSON.\n",
+              "role": "model"
+            },
+            {
+              "content": "=I seguenti dati json rappresentano l'esito dell'addestramento dei modelli MLRA e LASSO per la stima della deformazione termica.\nDati: {{ $json.eval_metrics }}\nCompito:\nScrivi un report di massimo 4 frasi in italiano, strutturato in questo modo:\nDichiara quale modello ha performato meglio e su quale asse logico (target_col).\nSpiega in modo semplice quant'è la riduzione dell'errore originario (reduction_vs_baseline) e a quanti micrometri (µm) ammonta l'errore residuo (RMSE) del modello vincente.\nConcludi ponendo una domanda diretta all'operatore: \"Autorizzi l'invio degli offset al controllo numerico per attivare la compensazione?\"\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        2416,
+        352
+      ],
+      "id": "becf119a-625a-4eed-a51b-4b210023e8c8",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "BKwlTtGmjlTuaps9",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rimuove il Base64 dell'immagine prima di chiamare l'LLM\nconst evalData = $input.all()[0].json;\ndelete evalData.comparison_plot; // Cancella la chiave pesantissima\n\nreturn {\n  json: {\n    eval_metrics: evalData\n  }\n};\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        352
+      ],
+      "id": "18e3967a-3826-4dc3-8fc9-81ce61954960",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "resume": "form",
+        "formTitle": "Conferma modello",
+        "formDescription": "={{ $json.content.parts[0].text }}",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Decisione Operativa",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Approva compensazione"
+                  },
+                  {
+                    "option": "Rifiuta e blocca esecuzione"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2736,
+        352
+      ],
+      "id": "a6aa564e-1fb4-465d-9442-71380e4fa84a",
+      "name": "Wait1",
+      "webhookId": "39e550ff-af65-4b98-95e9-5d817dd8aa25"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json[\"Decisione Operativa\"] }}",
+                    "rightValue": "Approva compensazione",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e0ea741b-d1e0-41f5-81fe-a525b0b5113c"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1d23cab3-afb0-4163-887d-2161bf1ec47b",
+                    "leftValue": "={{ $json[\"Decisione Operativa\"] }}",
+                    "rightValue": "Rifiuta e blocca esecuzione",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2944,
+        352
+      ],
+      "id": "48b7449b-79c8-4acf-a310-2c3d04d9c42e",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "errorMessage": "Esecuzione terminata"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        3264,
+        368
+      ],
+      "id": "c93c721a-dba8-4e4c-8657-a7e6ecd1e026",
+      "name": "Stop and Error"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Body2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingestion": {
+      "main": [
+        [
+          {
+            "node": "Body3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preprocessing": {
+      "main": [
+        [
+          {
+            "node": "Body4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Feature Selection": {
+      "main": [
+        [
+          {
+            "node": "HITL 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Training": {
+      "main": [
+        [
+          {
+            "node": "Body1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compensation": {
+      "main": [
+        [
+          {
+            "node": "Reference Notebook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reference Notebook": {
+      "main": [
+        [
+          {
+            "node": "Notebook Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Body": {
+      "main": [
+        [
+          {
+            "node": "Compensation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Body1": {
+      "main": [
+        [
+          {
+            "node": "Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Body2": {
+      "main": [
+        [
+          {
+            "node": "Ingestion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Body3": {
+      "main": [
+        [
+          {
+            "node": "Preprocessing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Body4": {
+      "main": [
+        [
+          {
+            "node": "Feature Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Body5": {
+      "main": [
+        [
+          {
+            "node": "Training",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HITL 1": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Body5",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "sensor removal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "sensor removal": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "code fs2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "code fs2": {
+      "main": [
+        [
+          {
+            "node": "Feature Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ],
+        [
+          {
+            "node": "Stop and Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "2d6d5159-27c1-425a-bc2d-2bca5b5c7a6b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "84cc4afe9dcf531bce5eeecddf5163e3e129ebe9349b3a2e6eee5b3f1a046f2e"
+  },
+  "id": "h0wLskKMBljLNCCq",
+  "tags": [
+    {
+      "updatedAt": "2026-03-07T15:54:14.366Z",
+      "createdAt": "2026-03-07T15:54:14.366Z",
+      "id": "h8FFm4bb7tZs0YDZ",
+      "name": "V3"
+    }
+  ]
+}
