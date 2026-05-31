@@ -1,6 +1,6 @@
 # Thermal Compensation Pipeline — n8n Orchestration
 
-Pipeline di orchestrazione per la stima e compensazione della deformazione termica di un centro di lavoro CNC a 5 assi (CMS VM-30K). Trasforma una pipeline Python monolitica in un'architettura a microservizi orchestrata tramite [n8n](https://n8n.io), con integrazione di task Human-in-the-Loop (HITL) e supporto cognitivo LLM (Gemini 2.5 Flash).
+Pipeline di orchestrazione per la stima e compensazione della deformazione termica di un centro di lavoro CNC a 5 assi (CMS VM-30K).
 
 ---
 
