@@ -1,93 +1,96 @@
-# Thermal Compensation Pipeline — n8n Orchestration
+# Thermal Compensation Pipeline
 
-Pipeline di orchestrazione per la stima e compensazione della deformazione termica di un centro di lavoro CNC a 5 assi (CMS VM-30K).
+A microservices-based ML pipeline for estimating and compensating thermal deformation on a 5-axis CNC machining center (CMS VM-30K), built with real industrial sensor data.
 
----
+> **Note:** This project contains both Python API services and JavaScript code nodes. The JavaScript snippets handle conditional branching and user input processing within n8n's orchestration layer (see `n8n_workflow_export.json`).
 
-## Architettura
+## Context
+
+Precision machining centers experience thermal drift during operation — as the machine heats up, structural components expand, causing positional errors in the order of tens of micrometers. This pipeline processes real-time temperature data from 28 sensors and predicts the resulting displacement, enabling the machine to apply corrective offsets automatically.
+
+The pipeline was developed using real sensor data collected from a production machine (batch sample from a thermal test cycle). The system is designed as a set of independent Python API services orchestrated by [n8n](https://n8n.io), with human-in-the-loop (HITL) checkpoints that allow operators to validate results before applying compensation to the machine.
+
+## Architecture
 
 ```text
 [Trigger]
     │
     ▼
-[Ingestion :8001]       ← carica CSV sensori e spostamenti
+[Ingestion :8001]       ← loads sensor CSV + displacement data
     │
     ▼
-[Preprocessing :8002]   ← interpolazione, valori relativi, merge T1-T28
+[Preprocessing :8002]   ← interpolation, relative values, merge T1-T28
     │
     ▼
-[Feature Selection :8003] ← clustering gerarchico HCA, selezione rappresentanti
+[Feature Selection :8003] ← hierarchical clustering (HCA), representative selection
     │
     ▼
-[HITL 1 — Form]         ← operatore verifica stato macchina e sensori
+[HITL 1 — Form]         ← operator verifies machine/sensor status
     │
-    ├── nessun_problema ─────────────────────────────────────────┐
+    ├── no_problem ──────────────────────────────────────────────┐
     │                                                             │
-    ├── sensore_guasto → [sensor removal] → [Feature Selection 2] │
+    ├── sensor_fault → [sensor removal] → [Feature Selection 2]  │
     │                                                             │
-    └── macchina_anomala → [STOP + log]                [Body5] → [Training :8004]
+    └── machine_anomaly → [STOP + log]                 → [Training :8004]
                                                                   │
                                                                   ▼
                                                           [Evaluation :8005]
                                                                   │
                                                                   ▼
-                                                      [LLM Gemini 2.5 Flash] ← Generazione Report
+                                                      [LLM Gemini 2.5 Flash] ← Report generation
                                                                   │
                                                                   ▼
-                                                          [HITL 2 — Form] ← Operatore approva/rifiuta offset
+                                                          [HITL 2 — Form] ← Operator approves/rejects offsets
                                                                   │
-                                                                  ├── Rifiuta → [STOP]
+                                                                  ├── Reject → [STOP]
                                                                   │
-                                                                  └── Approva → [Compensation :8006]
+                                                                  └── Approve → [Compensation :8006]
 ```
 
----
+## Services
 
-## Microservizi
-
-| Servizio | Porta | Endpoint | Descrizione |
+| Service | Port | Endpoint | Description |
 |---|---|---|---|
-| `ingestion` | 8001 | `POST /ingest` | Carica TE1-TE4, TI, Displacements.csv e converte i timestamp in Unix epoch |
-| `preprocessing` | 8002 | `POST /preprocess` | Interpola i DataFrame su asse temporale comune, calcola valori relativi, merge T1-T28 |
-| `feature-selection` | 8003 | `POST /feature-selection` | Clustering gerarchico ward+euclidean su T trasposta, ritorna cluster_map e df_clustered |
-| `training` | 8004 | `POST /train` | Allena MLRA (su df_clustered) e LASSO con GridSearch (su df_tall), KFold CV |
-| `evaluation` | 8005 | `POST /evaluate` | Calcola MAE, MSE, RMSE, R², riduzione % vs baseline, genera plot comparativo |
-| `compensation` | 8006 | `POST /compensate` | Applica il modello validato per calcolare gli offset di compensazione in µm |
+| `ingestion` | 8001 | `POST /ingest` | Loads TE1-TE4, TI, Displacements.csv and converts timestamps to Unix epoch |
+| `preprocessing` | 8002 | `POST /preprocess` | Interpolates DataFrames onto a common time axis, computes relative values, merges T1-T28 |
+| `feature-selection` | 8003 | `POST /feature-selection` | Hierarchical clustering (ward + euclidean) on transposed T matrix, returns cluster_map and df_clustered |
+| `training` | 8004 | `POST /train` | Trains MLRA (on df_clustered) and LASSO with GridSearch (on df_tall), KFold CV |
+| `evaluation` | 8005 | `POST /evaluate` | Computes MAE, MSE, RMSE, R², % reduction vs baseline, generates comparison plot |
+| `compensation` | 8006 | `POST /compensate` | Applies the validated model to compute compensation offsets in µm |
 
-Tutti i servizi espongono anche `GET /health`.  
-Rete Docker interna: `pipeline` (bridge).
+All services also expose `GET /health`.
+Internal Docker network: `pipeline` (bridge).
 
----
-
-## Avvio
+## Getting Started
 
 ```bash
 docker-compose up --build
 ```
 
-n8n disponibile su `http://localhost:5678`.
-
----
+n8n is available at `http://localhost:5678`.
 
 ## API Reference
 
 ### `POST /ingest`
 
-Legge i file CSV dalla directory `DATA_DIR` (default `/app/data`).
+Reads CSV files from the `DATA_DIR` directory (default `/app/data`).
 
-**File attesi:**
-| File | Sensori | Formato timestamp |
+**Expected files:**
+
+| File | Sensors | Timestamp format |
 |---|---|---|
-| `TE1.csv` – `TE4.csv` | T1–T12 (esterni) | `%d/%m/%Y %H.%M.%S` |
-| `TI.csv` | T13–T28 (interni) | `%d/%m/%Y %H:%M:%S.%f` |
+| `TE1.csv` – `TE4.csv` | T1–T12 (external) | `%d/%m/%Y %H.%M.%S` |
+| `TI.csv` | T13–T28 (internal) | `%d/%m/%Y %H:%M:%S.%f` |
 | `Displacements.csv` | D1–D5 (µm) | `%d/%m/%Y %H:%M:%S` |
 
 **Request body:**
+
 ```json
 { "normalize_time": false }
 ```
 
 **Response:**
+
 ```json
 {
   "df_text": { "TIME": [...], "T1": [...], ..., "T12": [...] },
@@ -97,14 +100,13 @@ Legge i file CSV dalla directory `DATA_DIR` (default `/app/data`).
 }
 ```
 
----
-
 ### `POST /preprocess`
 
-Interpola `df_text` e `df_dis` sull'asse temporale di `df_tint` (master).  
-Rimuove NaN, normalizza in valori relativi alla prima riga (incluso TIME), merge T1-T28 → `df_tall`.
+Interpolates `df_text` and `df_dis` onto the time axis of `df_tint` (master).
+Removes NaN values, normalizes to relative values (including TIME), merges T1-T28 → `df_tall`.
 
 **Request body:**
+
 ```json
 {
   "df_text": { "TIME": [...], "T1": [...], ..., "T12": [...] },
@@ -114,6 +116,7 @@ Rimuove NaN, normalizza in valori relativi alla prima riga (incluso TIME), merge
 ```
 
 **Response:**
+
 ```json
 {
   "df_tall": { "TIME": [...], "T1": [...], ..., "T28": [...] },
@@ -122,15 +125,14 @@ Rimuove NaN, normalizza in valori relativi alla prima riga (incluso TIME), merge
 }
 ```
 
----
-
 ### `POST /feature-selection`
 
-Clustering gerarchico (ward + euclidean) sui sensori T trasposti.  
-Il rappresentante di ogni cluster è il **primo elemento** per indice.  
-Genera anche il dendrogramma come PNG base64.
+Hierarchical clustering (ward + euclidean) on transposed T sensors.
+The representative of each cluster is the **first element** by index.
+Also generates a dendrogram as base64 PNG.
 
 **Request body:**
+
 ```json
 {
   "df_tall": { "TIME": [...], "T1": [...], ..., "T28": [...] },
@@ -140,6 +142,7 @@ Genera anche il dendrogramma come PNG base64.
 ```
 
 **Response:**
+
 ```json
 {
   "df_clustered":      { "TIME": [...], "T17": [...], "T4": [...], ... },
@@ -155,18 +158,16 @@ Genera anche il dendrogramma come PNG base64.
 }
 ```
 
----
-
 ### `POST /train`
 
-Allena due modelli in parallelo tramite KFold CV (default: 10 fold, shuffle=True):
+Trains two models in parallel via KFold CV (default: 10 folds, shuffle=True):
+- **MLRA** (Multiple Linear Regression) — on `df_clustered` (HCA features)
+- **LASSO** — on `df_tall` (all 28 sensors), with GridSearch on `alpha ∈ logspace(-4, 0, 30)`
 
-- **MLRA** (Multiple Linear Regression) — su `df_clustered` (feature HCA)
-- **LASSO** — su `df_tall` (tutti i 28 sensori), con GridSearch su `alpha ∈ logspace(-4, 0, 30)`
-
-Il target è la colonna `displ` di `df_dis` (default index 3 = D3).
+Target is the `displ` column from `df_dis` (default index 3 = D3).
 
 **Request body:**
+
 ```json
 {
   "df_clustered": { "TIME": [...], "T17": [...], ... },
@@ -179,6 +180,7 @@ Il target è la colonna `displ` di `df_dis` (default index 3 = D3).
 ```
 
 **Response:**
+
 ```json
 {
   "mlra": {
@@ -197,16 +199,15 @@ Il target è la colonna `displ` di `df_dis` (default index 3 = D3).
 }
 ```
 
----
-
 ### `POST /evaluate`
 
-Calcola metriche su entrambi i modelli e genera un plot comparativo PNG base64.  
-Suggerisce automaticamente il modello con RMSE minore.
+Computes metrics for both models and generates a comparison plot (base64 PNG).
+Automatically suggests the model with lower RMSE.
 
-**Request body:** output completo di `/train`
+**Request body:** full output from `/train`
 
 **Response:**
+
 ```json
 {
   "metrics": {
@@ -216,21 +217,20 @@ Suggerisce automaticamente il modello con RMSE minore.
   "reduction_vs_baseline": {
     "MLRA": 72.4, "LASSO": 76.8,
     "baseline_std": 5.23,
-    "note": "% riduzione RMSE rispetto a std(y_true). >70% = buono, >50% = accettabile"
+    "note": "% RMSE reduction vs std(y_true). >70% = good, >50% = acceptable"
   },
   "suggested_model": "LASSO",
   "comparison_plot": "<base64 PNG>"
 }
 ```
 
----
-
 ### `POST /compensate`
 
-Applica il modello suggerito e approvato per calcolare gli offset di compensazione termica in µm.  
+Applies the approved model to compute thermal compensation offsets in µm.
 `compensation_offset = -displacement_predicted`
 
 **Request body:**
+
 ```json
 {
   "suggested_model": "LASSO",
@@ -242,6 +242,7 @@ Applica il modello suggerito e approvato per calcolare gli offset di compensazio
 ```
 
 **Response:**
+
 ```json
 {
   "model_used": "LASSO",
@@ -258,119 +259,97 @@ Applica il modello suggerito e approvato per calcolare gli offset di compensazio
 }
 ```
 
----
+## HITL 1 — Machine Status Verification
 
-## HITL 1 — Verifica stato macchina
+### Purpose
 
-### Scopo
-Permettere all'operatore di segnalare problemi noti **prima** del training, evitando che dati corrotti influenzino il modello.
+Allows the operator to flag known issues **before** training, preventing corrupted data from influencing the model.
 
 ### Form (Wait node — On Form Submission)
 
-| Campo | Tipo | Valori |
+| Field | Type | Values |
 |---|---|---|
-| `Stato della macchina` | Dropdown | `nessun_problema` / `sensore_guasto` / `macchina_anomala` |
-| `Sensore da escludere` | Text | Es. `T17` (solo se stato = `sensore_guasto`) |
-| `Note aggiuntive` | Textarea | Opzionale |
+| `Machine status` | Dropdown | `no_problem` / `sensor_fault` / `machine_anomaly` |
+| `Sensor to exclude` | Text | e.g. `T17` (only if status = `sensor_fault`) |
+| `Additional notes` | Textarea | Optional |
 
-### Branch A — Nessun problema
-→ `Body5` → `Training`
+### Branch A — No problem
 
-### Branch B — Sensore guasto
+→ `Training`
 
-**`sensor removal`** — rimuove il sensore da `df_tall` e riduce `num_clusters`:
+### Branch B — Sensor fault
+
+**`sensor removal`** — removes the sensor from `df_tall` and reduces `num_clusters`:
+
 ```javascript
 const fs = $("Feature Selection").item.json;
-const daEscludere = ($input.first().json["Sensore da escludere"] || "").trim().toUpperCase();
+const toExclude = ($input.first().json["Sensor to exclude"] || "").trim().toUpperCase();
 
 const dfTall = { ...fs.df_tall };
-if (daEscludere) delete dfTall[daEscludere];
+if (toExclude) delete dfTall[toExclude];
 
 const numClusters = Math.max(2, Object.keys(fs.cluster_map).length - 1);
 
 return [{ json: {
-  df_tall:         dfTall,
-  df_dis:          fs.df_dis,
-  num_clusters:    numClusters,
-  sensore_escluso: daEscludere
+  df_tall:          dfTall,
+  df_dis:           fs.df_dis,
+  num_clusters:     numClusters,
+  excluded_sensor:  toExclude
 }}];
 ```
 
-**`code fs2`** — prepara il body per Feature Selection 2:
-```javascript
-const input = $input.first().json;
-return [{ json: {
-  df_tall:      input.df_tall,
-  df_dis:       input.df_dis,
-  num_clusters: input.num_clusters
-}}];
-```
+**`Feature Selection 2`** — same `/feature-selection` endpoint, on `df_tall` without the faulty sensor.
+Produces a new optimized `cluster_map` without the removed sensor.
 
-**`Feature Selection 2`** — stesso endpoint `/feature-selection`, su `df_tall` senza il sensore guasto.  
-Produce un nuovo `cluster_map` ottimizzato senza il sensore rimosso.
+> ⚠️ **Important**: removing a cluster representative eliminates all thermal coverage for that group. The resulting model cannot use that sensor during inference either. Use only for permanent faults.
 
-> ⚠️ **Importante**: rimuovere il sensore rappresentante di un cluster elimina tutta la copertura termica di quel gruppo. Il modello risultante non potrà usare quel sensore neanche in inferenza. Usare solo in caso di guasto definitivo.
+### Branch C — Machine anomaly
 
-### Branch C — Macchina anomala
-→ `STOP` (logging alert e notifica operatore)
+→ `STOP` (alert logging and operator notification)
 
----
+## HITL 2 — LLM-Assisted Decision Support
 
-## HITL 2 & Supporto Cognitivo LLM
+### Purpose
 
-### Scopo
-Abbattere la barriera cognitiva tra i risultati matematici del backend (RMSE, R²) e l'operatore di macchina, delegando la responsabilità della decisione finale a un attore umano qualificato.
+Bridges the cognitive gap between backend mathematical results (RMSE, R²) and the machine operator, delegating the final compensation decision to a qualified human actor.
 
-### Flusso Operativo
-1. **Filtro Payload**: Un nodo Code rimuove la stringa Base64 del grafico generata dall'`Evaluation` per non saturare la context window dell'LLM:
-   ```javascript
-   const evalData = $input.all()[0].json;
-   delete evalData.comparison_plot;
-   return { json: evalData };
-   ```
-2. **Generazione Report (Gemini 2.5 Flash)**: Il modello riceve le metriche e formula un report diagnostico in italiano (indicando modello migliore, % riduzione errore e RMSE residuo).
-3. **Form Operatore (Wait node)**: Il workflow si sospende.
+### Flow
+
+1. **Payload filter**: A Code node removes the base64 plot string to avoid saturating the LLM context window.
+2. **Report generation (Gemini 2.5 Flash)**: The model receives evaluation metrics and produces a diagnostic report (best model, % error reduction, residual RMSE).
+3. **Operator form (Wait node)**: The workflow pauses for human review.
 
 ### Form (Wait node — On Form Submission)
 
-| Campo | Tipo | Valori / Descrizione |
+| Field | Type | Values / Description |
 |---|---|---|
-| `Report Diagnostico` | HTML/Text | Sola lettura (Testo generato dall'LLM) |
-| `Decisione Operativa` | Dropdown | `approva_compensazione` / `rifiuta_ricalcola` |
+| `Diagnostic Report` | HTML/Text | Read-only (LLM-generated text) |
+| `Decision` | Dropdown | `approve_compensation` / `reject` |
 
-### Branch A — Approva
-Il workflow recupera il JSON originale dall'Evaluation e lo invia al servizio `Compensation`.
-→ `Compensation`
+### Branch A — Approve
 
-### Branch B — Rifiuta
-→ `STOP` (workflow interrotto, macchina protetta da compensazioni errate)
+The workflow retrieves the original JSON from Evaluation and sends it to the `Compensation` service.
 
----
+### Branch B — Reject
 
-## Pattern chiave — Wait node e dati pesanti
+→ `STOP` (workflow halted, machine protected from incorrect offsets)
 
-In n8n, il **Wait node** (On Form Submission) non propaga il payload dell'esecuzione originale quando il workflow riprende. Con payload grandi (dataframe JSON con migliaia di righe) la perdita del dato è sistematica.
+## Key Pattern — Wait Node and Large Payloads
 
-**Regola**: ogni nodo dopo un Wait che necessita di dataframe deve leggerli esplicitamente richiamando il nodo precedente:
+In n8n, the **Wait node** (On Form Submission) does not propagate the original execution payload when the workflow resumes. With large payloads (JSON dataframes with thousands of rows), data loss is systematic.
+
+**Rule**: every node after a Wait that needs dataframes must explicitly reference the upstream node:
 
 ```javascript
-// ✅ CORRETTO (Recupero diretto dal nodo target)
-
-// Esempio per il nodo Training (dopo HITL 1):
-const dati_training = $("Feature Selection").item.json;
-
-// Esempio per il nodo Compensation (dopo HITL 2):
+// ✅ CORRECT (direct reference to target node)
+const training_data = $("Feature Selection").item.json;
 const eval_data = $("Evaluation").item.json;
-const original_data = $("Feature Selection").item.json;
 
-
-// ❌ ERRATO ($input dopo il Wait ha solo i dati del Form)
-const dati = $input.first().json;
+// ❌ WRONG ($input after Wait only contains form data)
+const data = $input.first().json;
 ```
 
----
-
-## Struttura repository
+## Repository Structure
 
 ```text
 /
@@ -389,3 +368,11 @@ const dati = $input.first().json;
     └── Displacements.csv
 ```
 
+## Tech Stack
+
+- **Python** (FastAPI) — all microservices
+- **Docker / docker-compose** — containerization and networking
+- **n8n** — workflow orchestration with conditional branching and HITL
+- **scikit-learn** — MLRA, LASSO, GridSearchCV, KFold
+- **scipy** — hierarchical clustering
+- **Gemini 2.5 Flash** — LLM-powered diagnostic report generation
